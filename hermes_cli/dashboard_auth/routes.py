@@ -317,7 +317,7 @@ async def auth_native_authorize(
 @router.get("/auth/callback", name="auth_callback")
 async def auth_callback(
     request: Request, code: str = "", state: str = "", error: str = "",
-    error_description: str = ""):
+    error_description: str = "", broker_ticket: str = ""):
     pkce_raw = read_pkce_cookie(request)
     if not pkce_raw:
         _audit(request, AuditEvent.LOGIN_FAILURE, reason="missing_pkce_cookie")
@@ -332,6 +332,11 @@ async def auth_callback(
     if error:
         _login_failure(request, provider_name, "idp_error", error=error)
         raise _http(400, f"OAuth error from provider: {error} ({error_description})")
+    # Shared broker tickets are bound to this browser's secret proof. Other
+    # providers continue requiring their upstream echoed state unchanged.
+    if broker_ticket and provider_name == "shared-broker" and not code:
+        code = broker_ticket
+        state = parts.get("state", "")
     if not state or state != parts.get("state", ""):
         _login_failure(request, provider_name, "state_mismatch")
         raise _http(400, "OAuth state mismatch (CSRF check failed)")
